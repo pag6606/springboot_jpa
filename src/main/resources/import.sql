@@ -1,0 +1,2 @@
+insert into clientes(nombre, apellido, email,create_at) values('Paul', 'Alarcon', 'pag66.06@gmail.com','2018-07-15');
+insert into clientes(nombre, apellido, email,create_at) values('Viviana', 'Zuriaga', 'vivi2515@gmail.com','2018-07-15');
