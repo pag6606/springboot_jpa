@@ -1,5 +1,9 @@
 package com.palarcon.springboot.app.controller;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 
 import javax.validation.Valid;
@@ -24,6 +28,8 @@ import com.palarcon.springboot.app.models.dao.IClienteDao;
 import com.palarcon.springboot.app.models.entity.Cliente;
 import com.palarcon.springboot.app.models.service.IclienteService;
 import com.palarcon.springboot.app.util.paginator.PageRender;
+import org.springframework.web.multipart.MultipartFile;
+
 
 @Controller
 @SessionAttributes("cliente")
@@ -43,7 +49,22 @@ public class ClienteController {
 		return "listar";
 
 	}
+	
+	@GetMapping(value = "/ver/{id}")
+	public String ver(@PathVariable(value = "id") Long id, Map<String, Object> model, RedirectAttributes flash) {
+		Cliente cliente = clienteService.findOne(id);
+		if (cliente==null) {
+			flash.addAttribute("error", "El empleado no existe");
+			return "redirect:/empleado/listado";
+			
+		}
+		model.put("cliente", cliente);
+		model.put("titulo", "Detalle empleado: " + cliente.getNombre() );
+		
+		return "ver";
+	}
 
+	
 	@GetMapping("/form")
 	public String crear(Map<String, Object> model) {
 		Cliente cliente = new Cliente();
@@ -53,11 +74,25 @@ public class ClienteController {
 	}
 
 	@PostMapping("/form")
-	public String guardar(@Valid Cliente cliente, BindingResult result, Model model, RedirectAttributes flash , SessionStatus status) {
+	public String guardar(@Valid Cliente cliente, BindingResult result, Model model,
+			@RequestParam("file") MultipartFile foto, RedirectAttributes flash , SessionStatus status) {
 		if (result.hasErrors()) {
 			model.addAttribute("titulo", "Formulario de clientes con errores");
 			return "form";
 		}
+		if (!foto.isEmpty()) {
+			String rootPath ="/home/palarcon/uploads";
+			try {
+				byte[] bytes = foto.getBytes();
+				Path rutaCompleta = Paths.get(rootPath + "//" + foto.getOriginalFilename());
+				Files.write(rutaCompleta, bytes);
+				flash.addFlashAttribute("info", "ha subido correctamente '"+ foto.getOriginalFilename()+ "'");
+				cliente.setFoto(foto.getOriginalFilename());
+			} catch (IOException  e) {
+				e.printStackTrace();
+			}
+		}
+		
 		String mensaje =(cliente.getId()!=null)?"Cliente editado con exito":"Cliente guardado con extio";
 		clienteService.save(cliente);
 		status.setComplete();
