@@ -3,20 +3,17 @@ package com.palarcon.springboot.app.controller;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
-import java.nio.file.Files;
+
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
-import java.util.UUID;
 
 import javax.validation.Valid;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
+
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -33,8 +30,8 @@ import org.springframework.web.bind.annotation.SessionAttributes;
 import org.springframework.web.bind.support.SessionStatus;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-import com.palarcon.springboot.app.models.dao.IClienteDao;
 import com.palarcon.springboot.app.models.entity.Cliente;
+import com.palarcon.springboot.app.models.service.IUploadFileService;
 import com.palarcon.springboot.app.models.service.IclienteService;
 import com.palarcon.springboot.app.util.paginator.PageRender;
 import org.springframework.web.multipart.MultipartFile;
@@ -44,8 +41,9 @@ import org.springframework.web.multipart.MultipartFile;
 public class ClienteController {
 	@Autowired
 	private IclienteService clienteService;
-	// logs por consola
-	private final Logger log = LoggerFactory.getLogger(getClass());
+
+	@Autowired
+	private IUploadFileService uploadService;
 
 	@GetMapping("/listar")
 	public String listar(@RequestParam(name = "page", defaultValue = "0") int page, Model model) {
@@ -76,19 +74,14 @@ public class ClienteController {
 
 	@GetMapping(value = "/uploads/{filename:.+}")
 	public ResponseEntity<Resource> verFoto(@PathVariable String filename) {
-		Path pathFoto = Paths.get("uploads").resolve(filename).toAbsolutePath();
-		log.info("pathFoto: " + pathFoto);
+
 		Resource recurso = null;
 		try {
-			recurso = new UrlResource(pathFoto.toUri());
-			if (!recurso.exists() && !recurso.isReadable()) {
-				throw new RuntimeException("Error: no se puede cargar la imagen: " + pathFoto.toString());
-			}
+			recurso = uploadService.load(filename);
 		} catch (MalformedURLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-
 		return ResponseEntity.ok()
 				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + recurso.getFilename() + "\"")
 				.body(recurso);
@@ -107,41 +100,38 @@ public class ClienteController {
 	public String guardar(@Valid Cliente cliente, BindingResult result, Model model,
 			@RequestParam("file") MultipartFile foto, RedirectAttributes flash, SessionStatus status) {
 		if (result.hasErrors()) {
-			model.addAttribute("titulo", "Formulario de clientes con errores");
+			model.addAttribute("titulo", "Formulario de Cliente");
 			return "form";
 		}
+
 		if (!foto.isEmpty()) {
+
 			if (cliente.getId() != null && cliente.getId() > 0 && cliente.getFoto() != null
 					&& cliente.getFoto().length() > 0) {
-				Path rootPath= Paths.get("uploads").resolve(cliente.getFoto()).toAbsolutePath();
-				File archivo = rootPath.toFile();
-				if (archivo.exists() && archivo.canRead()) {
-					archivo.delete();
-				
-				}
 
+				uploadService.delete(cliente.getFoto());
 			}
-			String uniqueFilename = UUID.randomUUID().toString() + "_" + foto.getOriginalFilename();
-			Path rootPath = Paths.get("uploads").resolve(uniqueFilename);
-			Path absolutePath = rootPath.toAbsolutePath();
-			log.info("rootPath: " + rootPath);
-			try {
 
-				Files.copy(foto.getInputStream(), absolutePath);
-				flash.addFlashAttribute("info", "ha subido correctamente '" + uniqueFilename + "'");
-				cliente.setFoto(uniqueFilename);
+			String uniqueFilename = null;
+			try {
+				uniqueFilename = uploadService.copy(foto);
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
+
+			flash.addFlashAttribute("info", "Has subido correctamente '" + uniqueFilename + "'");
+
+			cliente.setFoto(uniqueFilename);
+
 		}
 
-		String mensaje = (cliente.getId() != null) ? "Cliente editado con exito" : "Cliente guardado con extio";
+		String mensajeFlash = (cliente.getId() != null) ? "Cliente editado con éxito!" : "Cliente creado con éxito!";
+
 		clienteService.save(cliente);
 		status.setComplete();
-		flash.addFlashAttribute("success", mensaje);
+		flash.addFlashAttribute("success", mensajeFlash);
 		return "redirect:listar";
 	}
-
 	@GetMapping(value = "/form/{id}")
 	public String editar(@PathVariable(value = "id") Long id, Map<String, Object> model, RedirectAttributes flash) {
 		Cliente cliente = null;
@@ -168,12 +158,8 @@ public class ClienteController {
 
 			clienteService.delete(id);
 			flash.addFlashAttribute("success", "Cliente borrado con exito");
-			Path rootPath = Paths.get("uploads").resolve(cliente.getFoto()).toAbsolutePath();
-			File archivo = rootPath.toFile();
-			if (archivo.exists() && archivo.canRead()) {
-				if (archivo.delete()) {
-					flash.addFlashAttribute("info", "foto " + cliente.getFoto() + " eliminada con exito");
-				}
+			if (uploadService.delete(cliente.getFoto())) {
+				flash.addFlashAttribute("info", "foto " + cliente.getFoto() + " eliminada con exito");
 			}
 		}
 		return "redirect:/listar";
